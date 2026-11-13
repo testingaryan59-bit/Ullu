@@ -10,7 +10,7 @@ from datetime import datetime
 
 # ================= CONFIG (Railway Variables se lega) =================
 BOT_TOKEN = os.getenv("8655983220:AAEHqkyfWk-GSj91DgEMBCNpNtOeyPxCSto")
-CHANNEL_ID = int(os.getenv("CHANNEL_ID"))          # -100xxxxxxxxxx
+CHANNEL_ID = int(os.getenv("-1003635369137"))          # -100xxxxxxxxxx
 MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "6"))
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "1800"))  # 30 min
 CATEGORY_URL = "https://xmaza.movie/category/ullu/page/{}/"
