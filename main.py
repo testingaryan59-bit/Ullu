@@ -34,7 +34,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger("XMaza")
 
-app = Client("xmaza_bot", bot_token=BOT_TOKEN)
+app = Client(
+    "xmaza_bot",
+    api_id=int(os.getenv("API_ID")),
+    api_hash=os.getenv("API_HASH"),
+    bot_token=BOT_TOKEN,
+)
 
 def load_seen(path=SEEN_FILE) -> set:
     p = Path(path)
