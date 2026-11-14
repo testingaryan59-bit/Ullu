@@ -12,9 +12,9 @@ from pathlib import Path
 
 # ================= CONFIG =================
 BOT_TOKEN      = os.getenv("BOT_TOKEN")
-CHANNEL_ID     = int(os.getenv("CHANNEL_ID"))
-MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "6"))
-CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "1800"))
+CHANNEL_ID     = -1003635369137
+MAX_CONCURRENT = 6
+CHECK_INTERVAL = 1800
 CATEGORY_URL   = "https://xmaza.movie/category/ullu/page/{}/"
 START_PAGE     = 1
 END_PAGE       = 53
@@ -34,12 +34,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("XMaza")
 
-app = Client(
-    "xmaza_bot",
-    api_id=int(os.getenv("API_ID")),
-    api_hash=os.getenv("API_HASH"),
-    bot_token=BOT_TOKEN,
-)
+app = Client("xmaza_bot", bot_token=BOT_TOKEN)
 
 def load_seen(path=SEEN_FILE) -> set:
     p = Path(path)
