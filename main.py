@@ -5,10 +5,10 @@ import re
 import logging
 import hashlib
 from bs4 import BeautifulSoup
-from pyrogram import Client
-from pyrogram.errors import FloodWait, RPCError
 from datetime import datetime
 from pathlib import Path
+import telebot
+from telebot.async_telebot import AsyncTeleBot
 
 # ================= CONFIG =================
 BOT_TOKEN      = os.getenv("BOT_TOKEN")
@@ -34,7 +34,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("XMaza")
 
-app = Client("xmaza_bot", bot_token=BOT_TOKEN)
+bot = AsyncTeleBot(BOT_TOKEN)
 
 def load_seen(path=SEEN_FILE) -> set:
     p = Path(path)
@@ -66,7 +66,6 @@ async def get_video_links(session: aiohttp.ClientSession, page: int) -> list[str
     try:
         async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
             if resp.status != 200:
-                logger.warning(f"Page {page} → HTTP {resp.status}")
                 return []
             text = await resp.text()
         soup = BeautifulSoup(text, "html.parser")
@@ -119,7 +118,7 @@ async def extract_data(session: aiohttp.ClientSession, page_url: str) -> dict | 
         logger.error(f"Extract fail {page_url}: {e}")
         return None
 
-async def download_file(session: aiohttp.ClientSession, url: str, path: Path, retries=3):
+async def download_file(session: aiohttp.ClientSession, url: str, path: Path, retries=3) -> bool:
     for attempt in range(retries):
         try:
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=300)) as resp:
@@ -142,43 +141,46 @@ def build_caption(data: dict) -> str:
         f"#ULLU #XMaza #WebSeries"
     )
 
-async def upload_with_retry(data: dict, local_path: Path, thumb_path: Path | None, retries=3):
+async def upload_with_retry(data: dict, local_path: Path, thumb_path: Path | None, retries=3) -> bool:
     caption = build_caption(data)
     file_size = local_path.stat().st_size
 
     for attempt in range(retries):
         try:
             if file_size > 49 * 1024 * 1024:
-                await app.send_document(
-                    chat_id=CHANNEL_ID,
-                    document=str(local_path),
-                    caption=caption,
-                    thumb=str(thumb_path) if thumb_path else None,
-                    force_document=True
-                )
+                with open(local_path, "rb") as f:
+                    await bot.send_document(
+                        chat_id=CHANNEL_ID,
+                        document=f,
+                        caption=caption,
+                        parse_mode="Markdown"
+                    )
             else:
-                await app.send_video(
-                    chat_id=CHANNEL_ID,
-                    video=str(local_path),
-                    caption=caption,
-                    thumb=str(thumb_path) if thumb_path else None,
-                    supports_streaming=True,
-                    width=1280,
-                    height=720
-                )
+                thumb_bytes = None
+                if thumb_path and thumb_path.exists():
+                    with open(thumb_path, "rb") as tf:
+                        thumb_bytes = tf.read()
+
+                with open(local_path, "rb") as f:
+                    await bot.send_video(
+                        chat_id=CHANNEL_ID,
+                        video=f,
+                        caption=caption,
+                        parse_mode="Markdown",
+                        thumbnail=thumb_bytes,
+                        supports_streaming=True
+                    )
             return True
 
-        except FloodWait as e:
-            logger.warning(f"FloodWait {e.value}s — waiting...")
-            await asyncio.sleep(e.value + 2)
-
-        except RPCError as e:
-            logger.error(f"Telegram RPC error: {e}")
-            await asyncio.sleep(5 * (attempt + 1))
-
         except Exception as e:
-            logger.error(f"Upload error attempt {attempt+1}: {e}")
-            await asyncio.sleep(3)
+            err = str(e)
+            if "retry after" in err.lower():
+                wait = int(re.search(r'\d+', err).group())
+                logger.warning(f"FloodWait {wait}s")
+                await asyncio.sleep(wait + 2)
+            else:
+                logger.error(f"Upload attempt {attempt+1} fail: {e}")
+                await asyncio.sleep(5 * (attempt + 1))
 
     return False
 
@@ -200,8 +202,8 @@ async def process_video(
         try:
             ok = await download_file(session, video_url, local_path)
             if not ok:
-                logger.error(f"Download failed: {data['title']}")
                 await mark_failed(video_url)
+                logger.error(f"Download failed: {data['title']}")
                 return
 
             if thumb_path and data["thumb_url"]:
@@ -215,7 +217,6 @@ async def process_video(
                 logger.info(f"✅ {data['title']}")
             else:
                 await mark_failed(video_url)
-                logger.error(f"❌ Upload failed: {data['title']}")
 
         except Exception as e:
             logger.error(f"Process error {data['title']}: {e}")
@@ -256,7 +257,6 @@ async def full_dump():
 
         retry_links = list(failed - seen)
         if retry_links:
-            logger.info(f"Retrying {len(retry_links)} failed...")
             all_links = list(set(all_links + retry_links))
 
         ext_sem = asyncio.Semaphore(10)
@@ -304,7 +304,6 @@ async def monitor_new():
         await asyncio.sleep(CHECK_INTERVAL)
 
 async def main():
-    await app.start()
     logger.info(f"Bot live — Channel: {CHANNEL_ID}")
     await full_dump()
     await monitor_new()
